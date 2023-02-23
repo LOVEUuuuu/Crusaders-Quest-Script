@@ -1,0 +1,1839 @@
+//按键精灵手机版--安卓ROOT手机或模拟器（雷电3.73--MUMU模拟器2.2.10可用）--分辨率1080*1920
+//逻辑为竞技→钓鱼
+//灵魂要塞界面→红莲→好友陪练2次→钓鱼
+
+' 周几开始买块。填[1-7]，否则不买块，8为不买
+Dim BLOCK_BUY_DAY = 8
+' ↓当前小时为几的倍数时，自动切回竞技场，默认8，可1-24，0为不切
+Dim HOUR_MOD = 6
+Dim PACKAGE_NAME = "com.nhnent.SKQUEST"
+' -------------------自定义配置结束-------------------------
+' -------------------以下为系统配置，请勿随意修改------------
+' 扯到鱼后第一次按满的时间
+' Dim FirstPressFishTime = 2300
+' 检测到力量值掉到蓝色以下时，按压时间ms
+Dim ON_WEAK_PRESS_TIME = 1000 
+Dim TryFishTimes = 0
+' 已甩勾次数
+Dim PushTimes = 0
+' 成功钓到的鱼的个数
+Dim SuccessCount = 0
+' 绿色未满长按时长
+Dim PULL_LONG_PRESS_MSECS = 120
+' 挣扎节点(红线)每次按住多久
+Dim PULL_PRESS_MSECS = 10
+' 拉过红色等待多少毫秒
+Dim PULL_FULL_DELAY = 30
+' 钓鱼
+Dim F_鱼 = 0
+' 竞技场
+Dim F_竞技场 = 1
+' 副本（挑战）--为0则加入--默认2不加入逻辑
+Dim F_副本 = 2
+' 讨伐--为0则加入--默认3不加入逻辑
+Dim F_讨伐 = 3
+Dim F_红莲 = 4
+Dim F_好友一局 = 5
+Dim F_好友二局 = 6
+' 赋值随机变量+-10
+Dim suiji
+Randomize  
+suiji = Int(((10 - -10 + 1) * Rnd()) + -10)
+' 进游戏首要功能
+Dim ZZZ = F_竞技场
+' 默认切换
+Dim 默认切换到 = F_鱼
+Dim lastHour = 0
+' 上次战斗选择的对手，如果输了就换一次
+Dim battleChooseFirst = TRUE
+' 是否正在竞技场
+Dim 在竞技场 = False
+' 是否在讨伐
+Dim 在讨伐 = False
+' 超过这个数重置
+Dim MAX_FISH_TIMES = 999
+' 跑小人按钮选择0-3，表示1-4名
+Dim raceIndex = 0
+' 跑小人界面卡5次就重启
+Dim raceKill = 0
+' 未知界面卡住
+Dim unknowKill = 0
+' 遗迹4卡住
+Dim 瓦努夫ReHome = 0
+' 重启的次数
+Dim restartCount = 0
+' 消块类型 1消，2消，3消
+Dim battleBlock = 1
+' PVP买块
+Dim pvpBuyBlock = False
+
+Randomize
+
+Delay 2000
+' 主体循环UP+LO+可加其他模式
+While True
+    updateTimeState
+    loopOnce
+Wend
+EndScript
+' 【循环1】周几买块
+Function updateTimeState()
+    Dim h=DateTime.Hour(),m=DateTime.Minute(),s=DateTime.Second()
+    ' 周几（已改，不买块）开始自动买块
+    If DateTime.WeekDay() >= BLOCK_BUY_DAY Then
+        pvpBuyBlock = True
+    End If
+
+    ' 每隔n（默认0--改为0了）小时打一次竞技
+    If (h Mod HOUR_MOD) = 0 Then
+        If lastHour <> h Then
+            lastHour = h
+            ZZZ = F_竞技场
+        End If
+    End If
+End Function
+' 重启APP
+Function restartApp()
+    TracePrint "重启APP"
+    KillApp PACKAGE_NAME
+    Delay 5000
+    RunApp PACKAGE_NAME
+    Delay 5000
+    //如包名不对则桌面进入↓
+    //If CmpColorEx("553|427|FFFFFF,74|699|1A1A1A,280|657|D97700,442|657|FFE000", 1) = 1 Then 
+    //MTouch 104, 666
+    //End If
+End Function
+' 回到主页
+Function reHomeApp()
+    TracePrint "rehome"
+    KeyPress "Home"
+    Delay 2000
+    RunApp PACKAGE_NAME
+    Delay 1500
+End Function
+
+' 【循环2】
+Function loopOnce()
+    KeepCapture
+    Dim isRace = False //跑小人
+    Dim is瓦努夫 = False //遗迹4→无效没进
+    Dim isUnknow = False //未知界面
+    If  isNoFishTips() Then//没有鱼饵了1
+        onNoFishTips
+    ElseIf isWaitScene() Then//正式钓鱼界面（等待钓鱼）2
+        onWaitScene
+    ElseIf is瓦努夫PointHand() Then//讨伐瓦努夫点击3
+        on瓦努夫PointHand
+        is瓦努夫 = True
+    ElseIf isCatchingNotice() Then//出现鱼！4
+        onCatchingNotice
+    ElseIf isFishingBar() Then//钓鱼ING5
+        If isWhiteQTE() Then
+            onWhiteQTE
+        ElseIf isPullScene() Then
+            ' 压力未满， 按压
+            onPullScene
+        ElseIf isPullFull() Then
+            ' 张力满
+            onPullFull
+        ElseIf isWeakStrength() Then
+            onWeakStrength()
+        ElseIf isPushScene() Then
+            ' 判断甩勾
+            onPushScene
+        Else
+            TracePrint "unknow fishbar scene"
+        End If
+    ElseIf ZZZ= F_鱼 And isColorQTE() Then//颜色QTE
+        onColorQTE
+    ElseIf isFightingScene() Then//战斗场景
+        onFightingScene
+    ElseIf isContinueScene() Then//钓到继续
+        onContinueScene 
+    ElseIf isfishlevelup() Then//鱼界面升级
+        onfishlevelup
+    ElseIf isPauseScene() Then//鱼暂停场景--需要修改
+        onPauseScene
+    ElseIf isFishCollectScene() Then//图鉴页面
+        onFishCollectScene
+    ElseIf isFishShopScene() Then//鱼店
+        onFishShopScene
+    ElseIf isFishBuyScene() Then//蚯蚓界面
+        onFishBuyScene
+    ElseIf isFishPage() Then//选择渔场
+        onFishPage        
+    ElseIf isMainScene() Then//主场景
+        onMainScene 
+    ElseIf isMianBaoScene() Then//面包场景
+        onMianBaoScene()         
+    ElseIf isAdvenScene() Then//五门
+        onAdvenScene
+        ' fight↓战斗
+    ElseIf isReadyBattleScene() Then //选人开始战斗
+        onReadyBattleScene
+    ElseIf isFightWinNextScene() Then//战赢下一场
+        onFightWinNextScene
+    ElseIf isFightFailNewScene() Then//战败下一场
+        onFightFailNewScene
+    ElseIf isFightChoseScene() Then//战斗选人or进入竞技
+        onFightChoseScene
+    ElseIf isThreeBattleScene() Then//竞-斗-好场景
+        onThreeBattleScene
+    ElseIf isBattleUpgradeScene() Then//升段位了（青铜白银）
+        onBattleUpgradeScene
+    ElseIf isBattleNoTicketScene() Then//没票了
+        onBattleNoTicketScene
+    ElseIf isRaceCheckScene() Then//跑小人检测
+        onRaceCheckScene
+        isRace = True
+    ElseIf isRaceErrorScene() Then//跑小人错误
+        onRaceErrorScene
+    ElseIf isStageFinishScene() Then//关卡完成
+        onStageFinishScene
+    ElseIf isBattleTestScene() Then//战斗测试场景
+        onBattleTestScene 
+    ElseIf isDilaoScene() Then//灵地下区灰则重新挑战
+        onDilaoScene
+    ElseIf isSoulPassScene() Then//灵魂要塞通关场景
+        onSoulPassScene
+    ElseIf isWBFindTeamScene() Then//讨伐查找队伍
+        onWBFindTeamScene
+    ElseIf isWBTeamUpScene() Then//讨伐找到了队友
+        onWBTeamUpScene
+    ElseIf isWBEndWithTeamScene() Then//讨伐结束和队友都在
+        onWBEndWithTeamScene
+    ElseIf isWBEndNoTeamScene() Then//讨伐结束队友消失
+        onWBEndNoTeamScene
+    ElseIf isWBStageScene() Then//讨伐关卡选择
+        onWBStageScene
+    ElseIf isWBStartScene() Then//讨伐开始
+        onWBStartScene 
+    ElseIf isItemFullScene() Then//物品已满
+        onItemFullScene
+    ElseIf isWBSettleScene() Then//讨伐结算等待
+        onWBSettleScene
+    ElseIf isWeaponSellScene() Then//卖武器
+        onWeaponSellScene
+    ElseIf isHeroFirstMaxScene() Then//英雄首次升到满级
+        onHeroFirstMaxScene
+    ElseIf isPlayerLevelUpScene() Then//勇士团升级
+        onPlayerLevelUpScene
+    ElseIf isDilaoKeyScene() Then//地牢钥匙不足
+        onDilaoKeyScene
+    ElseIf isDoujiTestScene() Then//斗技
+        onDoujiTestScene 
+    ElseIf isdoujixunzhaoscene() Then//斗寻
+        ondoujixunzhaoscene() 
+    ElseIf isdoujijixuscene() Then//斗继
+        ondoujijixuscene 
+    ElseIf isdoujixuanrenscene() Then//斗选
+        ondoujixuanrenscene 
+    ElseIf isdoujishengjiscene() Then//斗升
+        ondoujishengjiscene 
+    ElseIf isDoujiTestEndScene() Then//斗结
+        onDoujiTestEndScene
+    ElseIf isFishBuyEndScene() Then//买完蚯蚓场景
+        onFishBuyEndScene
+    ElseIf isLoginScene() Then//登录场景
+        onLoginScene
+    ElseIf isHaoyouScene() Then//好友陪练
+        onHaoyouScene   
+    ElseIf isHaoyoujieshuScene() Then//陪练结束
+        onHaoyoujieshuScene 
+    ElseIf isTiaozhanScene() Then//挑战委托结束   
+    ElseIf isQitaScene() Then//其他场景
+        onQitaScene
+    ElseIf isPoPoScene() Then//popo场景57
+        onPoPoScene()
+    Else
+        onUnknowScene//在未知界面58
+        isUnknow = True
+    End If
+    If isRace Then//
+        raceKill = raceKill + 1
+        If raceKill >= 5 Then
+            ' 如果跑小人卡了就重启
+            restartApp
+            restartCount = restartCount + 1
+        End If
+    Else
+        raceKill = 0
+    End If
+    //讨伐瓦努夫（瓦奴夫）卡住→重启
+    If is瓦努夫 Then
+        瓦努夫ReHome = 瓦努夫ReHome + 1
+        If 瓦努夫ReHome >= 10 Then
+            reHomeApp
+        End If
+    Else
+        瓦努夫ReHome = 0
+    End If
+    //未知界面等待200次UKK归0-重启APP
+    If isUnknow Then
+        unknowKill = unknowKill + 1
+        If unknowKill >= 200 Then
+            unknowKill = 0
+            restartApp
+        End If
+    Else
+        unknowKill = 0
+    End If
+    If Not 在竞技场 And ZZZ <> F_鱼 Then
+        checkPassChallenge
+        
+    End If
+    ReleaseCapture
+End Function
+' //等待放鱼饵---（此为正式钓鱼界面）鱼饵上棕+图鉴蓝+聊天浅棕+右上蓝125,255（改位置了，已修改）
+Function isWaitScene()
+    If CmpColorEx("496|126|526973,123|265|C6A242,903|1844|9CC7D6,1047|1840|E7CB4A",0.9) = 1 Then
+        isWaitScene = TRUE
+        TracePrint "isWaitScene"
+    Else
+        isWaitScene = FALSE
+    End If
+End Function
+Function onWaitScene()
+    If ZZZ = F_竞技场 Then//FB---
+        ' 准备退出
+        MTouch 1021, 1865
+        Delay 500
+        MTouch 285, 969
+        Delay 500
+        MTouch 259, 1143
+        Delay 500
+        
+    Else
+        If TryFishTimes < MAX_FISH_TIMES Then
+            ' 点击开始钓鱼
+            touchFishing
+            TryFishTimes = TryFishTimes + 1
+            TracePrint "甩勾 " & PushTimes & " 次, 抓到 " & SuccessCount & " 条"
+            Delay 1500
+        Else
+            TracePrint "买点鱼饵"
+            '点击蚯蚓，打开商店
+            MTouch 436, 74
+            Delay 1000
+        End If
+    End If
+End Function
+' 【11】图鉴页面
+Function isFishCollectScene()
+    If CmpColorEx("899|1529|293CCE,896|1775|293CCE,1015|1850|428EBD,534|507|9CC7D6", 1) = 1 Then
+        isFishCollectScene = TRUE
+        TracePrint "isFishCollectScene"
+    Else
+        isFishCollectScene = FALSE
+    End If
+End Function
+Function onFishCollectScene()
+    ' 关闭图鉴
+    MTouch 1017, 1858
+    Delay 500
+End Function
+' 【12】鱼店
+Function isFishShopScene()
+    If CmpColorEx("171|194|212839,664|595|313852,862|402|212431,665|112|526973",0.95) = 1 Then
+        isFishShopScene = TRUE
+        TracePrint "isFishShopScene"
+    Else
+        isFishShopScene = FALSE
+    End If
+End Function
+Function onFishShopScene()
+    For 5
+        swipeDown 445, 1005
+        Delay 300
+    Next
+    Delay 1000
+    KeepCapture
+    ' 如果蚯蚓没有设置
+    If CmpColorEx("395|1658|52DBA5,445|1759|52DBA5",0.95) = 1 Then
+        MTouch 417, 1704
+        Delay 2200
+    End If
+
+    If TryFishTimes < MAX_FISH_TIMES Then
+        ' 关闭
+        MTouch 1016, 1849
+    Else
+        ' 购买蚯蚓按钮
+        MTouch 425, 1554
+
+    End If
+    Delay 1000
+End Function
+' 【13】蚯蚓界面
+Function isFishBuyScene()
+    If CmpColorEx("840|1476|428EBD,241|1495|212429,231|1318|212429,245|433|313C42,273|432|313C42",0.9) = 1 Then
+        isFishBuyScene = TRUE
+        TracePrint "isFishBuyScene"
+    Else
+        isFishBuyScene = FALSE
+    End If
+End Function
+Function onFishBuyScene()
+    If TryFishTimes < MAX_FISH_TIMES Then
+        ' 直接关闭
+        MTouch 843, 1479
+        Delay 1000
+        ' 退出
+        MTouch 1016, 1849
+        Delay 1000
+    Else
+        ' 随便买点40~50
+        ' MTouch 258, 554
+        ' 多买点
+        MTouch 261, 726
+
+        Delay 500
+        ' 确定
+        MTouch 261, 1383
+        Delay 2000
+        onFishBuyEndScene
+    End If
+End Function
+' 【48】买完蚯蚓场景（确认4位置蓝）
+Function isFishBuyEndScene()
+    If CmpColorEx("159|823|E7CB4A,240|829|E7CB4A,169|1092|E7CB4A,241|1108|E7CB4A",0.95) = 1 Then
+        isFishBuyEndScene = TRUE
+        TracePrint "isFishBuyEndScene"
+    Else
+        isFishBuyEndScene = FALSE
+    End If
+End Function
+Function onFishBuyEndScene()
+    MTouch 207, 952  //←鱼饵点击确定
+    Delay 1000
+    MTouch 1016, 1849  //←点击X
+    TryFishTimes = 0
+    Delay 1000
+End Function
+' 【1】没有鱼饵了√
+Function isNoFishTips() //←已改为4红-没+有+无+鱼 不清楚是啥2边灰中间蓝。猜是没有鱼饵提示原"542|682|BDBABD,541|1235|BDBABD,546|964|5A75FF,551|1136|5A75FF"
+    If CmpColorEx("543|743|5A75FF,547|774|5A75FF,546|965|5A75FF,551|1137|5A75FF",0.9) = 1 Then
+        isNoFishTips = TRUE
+        TracePrint "isNoFishTips"
+    Else
+        isNoFishTips = FALSE
+    End If
+End Function
+Function onNoFishTips()
+    TracePrint "没有鱼饵了"
+    TryFishTimes = MAX_FISH_TIMES
+End Function
+' 甩勾--在Fishingbar里面
+Function isPushScene()
+    If CmpColorEx("834|407|FF8673,843|407|FFDFB5,858|1580|848E94",0.9) = 1 Then
+        isPushScene = TRUE
+        TracePrint "isPushScene"
+    Else
+        isPushScene = FALSE
+    End If
+End Function
+Function onPushScene()
+    ' 浮漂Y从 555~1565 用时2000ms
+    ' 命中区域宽202像素
+    Dim MAX_FY = 1565
+    Dim FWIDTH = 1010
+    Dim FMSEC = 2000
+    Dim BWIDTH = 202
+    Dim dis = 0 ' 需要等待的时长
+    Dim intBX, intBY, intFX, intFY
+    FindColor 822,558,877,1568, "F76110", 0, 0.95, intBX, intBY
+    FindColor 822,558,877,1568, "CEEB63", 0, 0.95, intFX, intFY
+    If intBX > -1 And intBY > -1 And intFX > -1 And intFY > -1 Then
+        If intFY > intBY Then
+            ' 已经过了
+            If intFY > MAX_FY Then
+                TracePrint "errorPox F:" & intFY
+                intFY = MAX_FY
+            End If
+            dis = (MAX_FY - intFY)+(MAX_FY-intBY - BWIDTH)
+            dis = (dis / FWIDTH * FMSEC)
+            TracePrint "等待甩勾R：" & Int(dis) & "ms"
+            Delay dis
+            touchFishing
+        ElseIf intFY < intBY Then
+            ' 还没到
+            dis = intBY - intFY
+            dis = (dis / FWIDTH * FMSEC)
+            TracePrint "等待甩勾L：" & Int(dis) & "ms"
+            Delay dis
+            touchFishing
+        Else
+            ' 刚好在
+            TracePrint "甩勾， fy:"&intFY&", by"&intBY
+            touchFishing
+        End If
+        PushTimes = PushTimes + 1
+        Delay 4500
+    End If
+End Function
+' 【4】出现鱼！（鱼出现叹号白灰白）
+Function isCatchingNotice()
+    If CmpColorEx("540|260|EFFFFF,543|275|635552,540|301|EFFFFF",0.9) = 1 Then
+        isCatchingNotice = TRUE
+        TracePrint "isCatchingNotice"
+    Else
+        isCatchingNotice = FALSE
+    End If
+End Function
+Function onCatchingNotice()
+    ' 压杆这么久
+    TracePrint "出现鱼！"
+    touchFishing
+End Function
+' 【5】钓鱼ING√
+Function isFishingBar()
+    If CmpColorEx("868|1574|848E94,862|1589|848E94,876|1611|DEE3E7,854|1612|52595A",0.9) = 1 Then
+        isFishingBar = TRUE
+        TracePrint "isFishingBar"
+    Else
+        isFishingBar = FALSE
+    End If
+End Function
+Function onXXScene()
+
+End Function
+' 力量缺乏--在Fishingbar里面和在onPullScene里面
+Function isWeakStrength()
+    If CmpColorEx("870|1058|7B5100,843|1055|7B3008,862|1198|527931,840|1197|426D00",0.95) = 1 Then
+        isWeakStrength = TRUE
+        TracePrint "isWeakStrength"
+    Else
+        isWeakStrength = FALSE
+    End If
+End Function
+Function onWeakStrength()
+    TracePrint "加大力气"
+    pressFishing ON_WEAK_PRESS_TIME
+End Function
+' 绿色乏力--在onPullScene里面
+Function isGreenWeak()
+    ' ADF36B, 84DB08 亮绿12
+    ' 527931, 426D00 暗绿12
+    ' 1061~1465
+    If CmpColorEx("866|1036|FFA200,861|1074|ADF36B,866|1435|527931,858|1542|000C52",0.9) = 1 Then
+        isGreenWeak = TRUE
+        TracePrint "isGreenWeak"
+    Else
+        isGreenWeak = FALSE
+    End If
+End Function
+Function onGreenWeak()
+
+End Function
+' 拉鱼, 张力未满状态--在Fishingbar里面和在onPullScene里面
+Function isPullScene()
+    If CmpColorEx("864|1060|FFA200,842|854|F76110,859|1465|527931,842|1465|426D00",0.95) = 1 Then
+        isPullScene = TRUE
+        TracePrint "isPullScene"
+    Else
+        isPullScene = FALSE
+    End If
+End Function
+' ↓废了
+Function onPullScene0()
+    pressFishing PULL_PRESS_MSECS
+End Function
+' ↓在用√
+Function onPullScene()
+    TracePrint "拉鱼"
+    While True
+        If isWhiteQTE() Then
+            onWhiteQTE
+        ElseIf isPullFull() Then
+            ' 红色已过
+            onPullFull
+        ElseIf isGreenWeak() Then
+            ' 绿色乏力
+            pressFishing PULL_LONG_PRESS_MSECS
+        ElseIf isPullScene() Then
+            ' 绿色未满
+            onPullScene0
+        ElseIf isWeakStrength() Then
+            ' 蓝色未满
+            onWeakStrength
+        ElseIf isFishingBar() Then
+            onPullFull
+        ElseIf isColorQTE() Then
+            onColorQTE
+        Else
+            TracePrint "unknow pull scene"
+            Exit While
+        End If
+        KeepCapture
+    Wend
+End Function
+' 判断张力是否满--在fishbar里面
+Function isPullFull()
+    If CmpColorEx("866|1049|FFA200,863|1372|ADF36B,862|1467|0820AD,874|1467|2134EF",0.9) = 1 Then
+        isPullFull = TRUE
+        TracePrint "isPullFull"
+    Else
+        isPullFull = FALSE
+    End If
+End Function
+Function onPullFull()
+    Delay PULL_FULL_DELAY
+End Function
+' 是否白色QTE--在fishbar里面
+Function isWhiteQTE()
+    ' 多个点或
+    isWhiteQTE = TRUE
+    TracePrint "isWhiteQTE"
+    Dim c1 = CmpColor(156, 1525,"FFFFFF",1)
+    If c1 <= -1 Then
+        Dim c2 = CmpColor(155, 1460,"FFFFFF",1)
+        If c2 <= -1 Then
+            Dim c3 = CmpColor(157, 1400,"FFFFFF",1)
+            If c3 <= -1 Then
+                Dim c4 = CmpColor(157, 1300,"FFFFFF",1)
+                If c4 <= -1 Then
+                    isWhiteQTE = False
+                End If
+            End If
+        End If
+    End If
+End Function
+Function onWhiteQTE()
+    ' 白色QTE
+    TracePrint "白色QTE"
+    Swipe 158, 1700, 158, 1470
+    Swipe 158, 1530, 158, 1200
+End Function
+' 【6】判-颜色QTE--在onPullScene和在fishbar里面
+Function isColorQTE()
+    If CmpColorEx("92|165|212042,92|215|212042,122|254|212031,122|1903|314563,472|307|000000,472|1588|000000,479|1596|000000",0.95) = 1 Then
+        isColorQTE = TRUE
+        TracePrint "isColorQTE"
+    Else
+        isColorQTE = FALSE
+    End If
+End Function
+Function onColorQTE()
+    ' 彩色QTE
+    ' 红，黄黄，蓝蓝√
+    ' 黄黄，红红，黄黄√
+    ' 黄，红，黄黄√
+    ' 红，黄黄，黄√
+    ' 红，黄，蓝蓝蓝√
+    ' 黄，黄，蓝√
+    ' 黄，蓝蓝，红红√
+    ' 红，蓝，红红√
+    ' 红，蓝，黄黄
+    TracePrint "彩色QTE"
+    ' saveQTE
+    Delay 300
+    KeepCapture
+    If CmpColorEx("99|371|BD6542,98|565|0020FF,89|752|73CFFF,98|1141|BD6542,602|526|4265EF",1) = 1 Then
+        ' 第一种情况 点 红2,黄3,蓝蓝蓝3|4|5
+        colorQTE 2, 3, 3
+    ElseIf CmpColorEx("90|369|73CFFF,98|1718|0020FF,99|1139|0020FF,87|1331|73CFFF",0.9) = 1 Then
+        '黄1,红8,黄黄(7|8,4|5)
+        colorQTE 1, 8, 8
+    ElseIf CmpColorEx("87|752|73CFFF,99|951|0020FF,88|1142|73CFFF,102|1332|BD6542",0.9) = 1 Then
+        ' 红4,黄黄4|5,蓝蓝5|6
+        colorQTE 4, 5, 5
+    ElseIf CmpColorEx("92|563|52CFFF,97|757|0020FF,89|1145|73CFFF,97|1525|0020FF",0.9) = 1 Then
+        ' 黄黄1|2,红红3|4,黄黄5|6
+        colorQTE 2, 4, 6
+    ElseIf CmpColorEx("99|564|BD6542,92|753|73CFFF,92|1331|73CFFF,98|1525|BD6542",0.9) = 1 Then
+        ' 黄3,黄6,蓝7
+        colorQTE 3, 6, 7
+    ElseIf CmpColorEx("96|1326|73CFFF,92|1520|73CFFF,598|621|4265EF,100|566|0020FF,91|749|73CFFF",0.9) = 1 Then
+        ' 红2,黄黄6|7,黄5
+        colorQTE 2, 7, 5
+    ElseIf CmpColorEx("105|977|0000DE,109|1168|AD4521,103|1505|52CFFF,108|1726|0020FF",0.9) = 1 Then
+        ' 黄7，蓝蓝6|7，红红7|8
+        colorQTE 7, 7, 7
+    ElseIf CmpColorEx("106|977|0000DE,108|1165|0000DE,109|1363|AD4521,107|1744|0000DE", 0.9) = 1 Then
+        ' 红1，蓝3，红红4|5
+        colorQTE 1, 3, 4
+    ElseIf CmpColorEx("105|403|0000DE,105|598|AD4521,106|786|21BAFF,104|979|21BAFF,89|1326|73CFFF", 0.9) = 1 Then
+        ' 红1，蓝2，黄黄3|4
+        colorQTE 1, 2, 3
+    Else
+        ' saveQTE
+    End If
+End Function
+' ↓废了
+Function saveQTE()
+    Dim dirName = "/sdcard/Pictures/"
+    Dim dirResult = TRUE
+    TracePrint "dirResult"
+    If Dir.Exist(dirName) <> True Then
+        dirResult = Dir.Create(dirName)
+    End If
+    If dirResult<>True Then
+        dirName = ""
+    End If
+    Dim name = dirName&Time()&".png"
+    SnapShot name
+    TracePrint "savefile:" & name
+End Function
+' 【8】钓到继续√
+Function isContinueScene()
+    If CmpColorEx("162|1522|E7CB4A,207|1524|E7CB4A,167|1737|E7CB4A,212|1723|E7CB4A",0.9) = 1 Then
+        isContinueScene = TRUE
+        TracePrint "isContinueScene"
+    Else
+        isContinueScene = FALSE
+    End If
+End Function
+Function onContinueScene()
+    If PushTimes > 0 Then
+        SuccessCount = SuccessCount + 1
+    End If
+    TracePrint "甩勾 " & PushTimes & " 次, 抓到 " & SuccessCount & " 条"
+    Delay 1500
+    MTouch 192, 1601
+    Delay 300
+End Function
+' 【9】鱼界面升级√
+Function isfishlevelup()
+    If CmpColorEx("890|829|42B6D6,873|1138|42B6D6,152|1088|212429,226|1105|212429",0.9) = 1 Then
+        isfishlevelup = TRUE
+        TracePrint "isfishlevelup"
+    Else
+        isfishlevelup = FALSE
+    End If
+End Function
+Function onfishlevelup() //确定坐标（194, 967）
+    MTouch 194, 967
+    Delay 2000
+End Function
+' 【10】鱼暂停场景--已修改
+Function isPauseScene()
+    If CmpColorEx("714|788|E7CB4A,596|786|52B6FF,439|794|52DBA5,289|794|4A7DFF",0.9) = 1 Then
+        isPauseScene = TRUE
+        TracePrint "isPauseScene"
+    Else
+        isPauseScene = FALSE
+    End If
+End Function
+Function onPauseScene()
+    If ZZZ = F_竞技场 Then
+        ' 退出
+        MTouch 329, 789
+        Delay 1000
+        MTouch 262, 1140
+        Delay 4000
+    Else
+        ' 继续
+        MTouch 732, 961
+    End If
+End Function
+' 【49】登录场景√
+Function isLoginScene()
+    If CmpColorEx("57|1654|DEF3FF,70|1669|212429,57|1866|212429,51|1883|5A7D94",0.9) = 1 Then
+        isLoginScene = TRUE
+        TracePrint "isLoginScene"
+    Else
+        isLoginScene = FALSE
+    End If
+End Function
+Function onLoginScene()
+    MTouch 114, 972
+    TracePrint "重启次数：" & restartCount
+    Delay 2000
+End Function
+
+' 【28】战斗测试场景？
+Function isBattleTestScene()
+    If CmpColorEx("100|149|213863,98|234|213863,154|1313|3938CE,177|1767|425173,163|1515|5ACBF7",0.9) = 1 Then
+        isBattleTestScene = TRUE
+        TracePrint "isBattleTestScene"
+    Else
+        isBattleTestScene = FALSE
+    End If
+End Function
+Function onBattleTestScene()
+    MTouch 126, 196
+    Delay 1000
+End Function
+' 【14】选择渔场
+Function isFishPage()
+    If CmpColorEx("125|1215|C6A242,69|1377|291C73,990|1621|101818,985|57|213039",0.9) = 1 Then
+        isFishPage = TRUE
+        TracePrint "isFishPage"
+    Else
+        isFishPage = FALSE
+    End If
+End Function
+Function onFishPage()
+    //swipeDown     swipeUp
+    //林中881,1697--东海712,1681
+    //树星733,1675--密林562,1677
+    //湖水585,1688--火山417,1658
+    //西海449,1687--南海271,1654
+    //沙漠300,1683
+    If ZZZ = F_竞技场 Then
+        MTouch 1014, 1857
+        Delay 1000
+        Exit Function
+    End If
+    For 2
+        swipeDown 917, 1765//上下滑
+        Delay 250
+    Next
+        MTouch 413,1687//随意点
+        Delay 1000
+        MTouch 881,1697//去哪
+        Delay 2000
+        MTouch 85,1699 //入场
+        Delay 800
+End Function
+
+' 【22】竞-斗-好场景√
+Function isThreeBattleScene()
+    If CmpColorEx("389|228|10185A,168|228|181C39,858|270|182029,187|1697|181C39,391|1711|10185A",0.95) = 1 Then
+        isThreeBattleScene = TRUE
+        TracePrint "isThreeBattleScene"
+    Else
+        isThreeBattleScene = FALSE
+    End If
+End Function
+Function onThreeBattleScene()//已修改
+    If ZZZ = F_竞技场 Then
+        ' 竞技场（点击棕竞技场）
+        MTouch 361, 482        
+        ' MTouch 360, 961（←斗技场--好友陪练390， 1487）
+        
+    Else
+        MTouch 1019,1830//←退出按钮
+    End If
+    Delay 1000
+End Function
+' 【21】战斗选人or进入竞技（段位上面屎黄+进入竞技左下蓝+进入竞技右上蓝+X左面深棕）
+Function isFightChoseScene()
+    If CmpColorEx("522|400|213031,111|1260|E7CB4A,193|1607|E7CB4A,917|1508|213039",0.9) = 1 Then
+        isFightChoseScene = TRUE
+        TracePrint "isFightChoseScene"
+    Else
+        isFightChoseScene = FALSE
+    End If
+End Function
+Function onFightChoseScene()
+    在竞技场 = True
+    If pvpBuyBlock Then
+        ' 买块
+        MTouch 459, 554
+        Delay 100
+        ' 加速
+        MTouch 453, 696
+        Delay 100
+    End If
+    If battleChooseFirst Then
+        ' 选第一个
+        MTouch 526,1551
+    Else
+        ' 选第二个
+        MTouch 320,1553
+    End If
+    Delay 500
+    ' ↓进入竞技--已改现为148,1438
+    MTouch 148,1438
+    Delay 1500
+End Function
+' 【18】选人开始战斗
+Function isReadyBattleScene()
+    If CmpColorEx("60|570|DEEFFF,131|973|52DFAD,112|1472|EFCF42,644|1526|DEEFFF",0.9) = 1 Then
+        isReadyBattleScene = TRUE
+        TracePrint "isReadyBattleScene"
+    ElseIf CmpColorEx("609|309|9CCFDE,141|324|314552,192|1423|EFCF42,64|1556|DEEFFF,539|368|213031",1) = 1 Then
+        isReadyBattleScene = TRUE
+        TracePrint "isReadyBattleScene"
+    Else
+        isReadyBattleScene = FALSE
+    End If
+End Function
+Function onReadyBattleScene()
+    ' 准备开始
+    MTouch 124,1479
+    Delay 1000
+End Function
+' 【7】战斗场景
+Function isFightingScene()
+    If CmpColorEx("170|676|181C31,7|862|292C42,184|477|292C42,172|102|101829", 0.95) = 1 Then
+        ' 判断间隙
+        isFightingScene = TRUE
+        TracePrint "isFightingScene"
+    ElseIf CmpColorEx("267|1780|42D7FF,267|1643|42D7FF,239|1583|42D7FF,242|1589|102029",0.95) = 1 Then
+        ' 女神边框
+        isFightingScene = TRUE
+        TracePrint "isFightingScene2"
+    Else
+        isFightingScene = FALSE
+    End If
+End Function
+Function onFightingScene()
+    Dim loopTimes = 0
+    Do
+        onFightingScene0 loopTimes
+        KeepCapture
+        loopTimes = loopTimes + 1
+        TracePrint "Fighting looptimes "&loopTimes
+        If is瓦努夫PointHand() Then
+            on瓦努夫PointHand
+        End If
+    Loop Until isFightingScene() <> True
+End Function
+' 正在战斗按技能ING--在onFightingScene里
+Function onFightingScene0(loopTimes)
+    If 在竞技场 Then
+        TracePrint "竞技场"
+        ' XJB按
+        ' 放女神
+        Touch 237, 1744, 50
+        Delay 20
+        For 2
+            ' 放技能
+            touchColorQTE 7
+            Delay 10
+            touchColorQTE 8
+            Delay 10
+            touchColorQTE 8
+        Next
+        Delay 50
+    ElseIf 在讨伐 Then//在瓦努尔里则显示
+        TracePrint "讨伐"
+        ' 放女神
+        Touch 237, 1744, 100
+        Delay 100
+        ' 这个是领主
+        Touch 252, 1385, 100
+        Delay 100
+        If (loopTimes Mod 3) = 1 Then
+            touchColorQTE 7
+            Delay 40
+            touchColorQTE 8
+            Delay 40
+            If loopTimes Mod 9 = 1 Then
+                touchColorQTE 8
+                Delay 40
+            End If
+        Else
+            For 2
+                touchColorQTE 4
+                Delay 40
+                touchColorQTE 5
+                Delay 40
+                touchColorQTE 4
+                Delay 40
+            Next
+        End If
+    Else
+        TracePrint "战斗中"
+        If battleBlock = 1 Then
+            battleBlock1 loopTimes
+        Else
+            battleBlock2 loopTimes
+        End If
+
+    End If
+End Function
+' 点块--都在onFightingScene0里
+Function battleBlock1(loopTimes)
+    If (loopTimes Mod 3) = 1 Then
+        ' 放女神
+        Touch 237, 1744, 100
+        Delay 20
+        ' 这个是领主
+        Touch 252, 1385, 100
+        Delay 50
+        ' 放技能
+        touchColorQTE 7
+        Delay 40
+        touchColorQTE 8
+        Delay 40
+        touchColorQTE 8
+        Delay 40
+    Else
+        ' XJB按
+        For 2
+            touchColorQTE 6
+            Delay 40
+            touchColorQTE 7
+            Delay 40
+            touchColorQTE 6
+            Delay 40
+        Next
+    End If
+    Delay 50
+End Function
+Function battleBlock2(loopTimes)
+    If (loopTimes Mod 3) = 1 Then
+        ' 放女神
+        Touch 237, 1744, 100
+        Delay 20
+        ' 放技能
+        touchColorQTE 7
+        Delay 40
+        touchColorQTE 8
+        Delay 40
+        If loopTimes Mod 6 = 1 Then
+            ' 这个是领主
+            Touch 252, 1385, 100
+            Delay 50
+        End If
+        If loopTimes Mod 9 = 1 Then
+            touchColorQTE 8
+            Delay 40
+        End If
+    Else
+        ' XJB按
+        For 2
+            touchColorQTE 4
+            Delay 40
+            touchColorQTE 5
+            Delay 40
+            touchColorQTE 4
+            Delay 40
+        Next
+    End If
+    Delay 50
+End Function
+' 【3】讨伐瓦努夫点击
+Function is瓦努夫PointHand()
+    If CmpColorEx("180|315|08AED6,96|321|299AB5,92|1591|299AB5,83|1631|3155EF,172|1597|08AED6",0.95) = 1 Then
+        is瓦努夫PointHand= TRUE
+    Else
+        is瓦努夫PointHand= FALSE
+    End If
+End Function
+Function on瓦努夫PointHand()
+    在讨伐 = True
+    If CmpColorEx("676|603|FFFFFF,675|625|FFFFFF", 0.95) = 1 Then
+        ' 左边手
+        For 20
+            Touch 673, 606, 20
+            Delay 30
+        Next
+    ElseIf CmpColorEx("680|591|FFFFFF,701|629|FFFFFF",0.95) = 1 Then
+        ' 左边手
+        For 20
+            Touch 673, 606, 20
+            Delay 30
+        Next
+    Else
+        ' 右边手
+        For 20
+            Touch 654, 1540, 10
+            Delay 40
+        Next
+    End If
+End Function
+' 【底部】是否通过挑战--但有条件--If Not 在竞技场 And ZZZ <> F_鱼 Then-checkPassChallenge
+Function checkPassChallenge()
+    Dim intX,intY
+    FindColor 444, 868, 563, 1045, "42108C", 0, 0.98, intX, intY
+    If intX > -1 And intY > -1 Then
+        TracePrint "checkPassChallenge"
+        MTouch intX - 120, intY
+        Delay 1000
+        ' 下一关
+        ' Touch 385, 960, 200
+    End If
+End Function
+' 【19】战赢下一场（房白+返左绿+蓝左+获胜后面叹号深棕）
+Function isFightWinNextScene()
+    If CmpColorEx("174|623|FFFFFF,176|674|52DBA5,180|1096|E7CB4A,925|1065|394952",1) = 1 Then
+        isFightWinNextScene = TRUE
+        TracePrint "isFightWinNextScene"
+    Else
+        isFightWinNextScene = FALSE
+    End If
+End Function
+Function onFightWinNextScene()
+    TracePrint "战斗胜利"
+    If ZZZ = F_竞技场 Then
+        ' 下一回合
+        MTouch 177, 1221
+    Else
+        ' 返回城镇
+        MTouch 163,674
+    End If
+
+    Delay 1000
+End Function
+' 【20】战败下一场（与战斗成功无明显差别--复制上面）
+Function isFightFailNewScene()
+    If CmpColorEx("174|623|FFFFFF,176|674|52DBA5,180|1096|E7CB4A,176|1342|E7CB4A",0.9) = 1 Then
+        isFightFailNewScene = TRUE
+        TracePrint "isFightFailNewScene"
+    Else
+        isFightFailNewScene = FALSE
+    End If
+End Function
+Function onFightFailNewScene()//竞技新回合-点击进入竞技
+    TracePrint "新回合"
+    If ZZZ = F_竞技场 Then
+        battleChooseFirst = Not battleChooseFirst
+        ' 新回合
+        MTouch 178, 1180//坐标正确
+        Delay 1000
+    Else
+        ' 返回城镇
+        MTouch 172, 744
+        Delay 1000
+    End If
+End Function
+' 【15】主场景（改-好友蓝+信件白灰+开始女神白色+开始女神白色2-点击开始 MT至探险界面）
+Function isMainScene()
+    If CmpColorEx("645|94|EFD3A5,783|80|CEEBEF,95|1727|FFFFFF,152|1723|FFFFFF",0.9) = 1 Then
+        isMainScene = TRUE
+        TracePrint "isMainScene"
+    Else
+        isMainScene = FALSE
+    End If
+End Function
+Function onMainScene()
+    ' 1面包
+    If CmpColorEx("179|475|000000,208|470|10FF94,205|502|08FFA5,205|522|08FFA5", 0.9) = 1 Then 
+        TracePrint "领面包"
+        MTouch 139, 489
+        Delay 2000
+    Else
+    ' 2探险界面
+    MTouch 156, 1725
+    Delay 2000 
+    End If
+End Function
+' 面包场景
+Function isMianBaoScene()
+    If CmpColorEx("978|104|213039,751|887|213463,484|1316|10284A,702|920|212021",1) = 1 Then
+        isMianBaoScene = TRUE
+        TracePrint "isMianBaoScene"
+    Else
+        isMianBaoScene = FALSE
+    End If
+End Function
+Function onMianBaoScene()
+    MTouch 269, 1125
+    Delay 2000
+    MTouch 118, 1649
+    Delay 2000
+    MTouch 268, 1117
+    Delay 2000
+    MTouch 1019, 1853
+    Delay 2000
+End Function
+' 【16】五门--改为了地牢-需要重新修改
+Function isAdvenScene()
+    If CmpColorEx("645|88|EFD3A5,782|80|CEEBEF,99|149|213863,151|1452|F7DFD6",0.9) = 1 Then
+        isAdvenScene = TRUE
+        TracePrint "isAdvenScene"
+    Else
+        isAdvenScene = FALSE
+    End If
+End Function
+Function onAdvenScene()
+    If ZZZ = F_竞技场 Then//判断是否有票？
+        TracePrint "竞技场"
+        ' 点击竞技==> 再点击竞技场（已删除，上面已点）（↓已改现竞技坐标427, 609--竞技场坐标508， 441）
+        MTouch 427, 609
+        Delay 1000
+        //↓地牢（已改城镇地牢坐标433, 945）
+    ElseIf ZZZ = F_红莲 Then
+        TracePrint "红莲"
+        Delay 1500
+        MTouch 427,279
+        Delay 1000
+        MTouch 498,1829
+        Delay 1000
+        MTouch 511, 1299
+        Delay 1000
+        MTouch 732, 514
+        Delay 1000
+    ElseIf ZZZ = F_好友一局 Then
+        TracePrint "好友陪练"
+        Delay 1500
+        MTouch 441,620
+        Delay 1000
+        MTouch 539,1517
+        Delay 1000
+    ElseIf ZZZ = F_讨伐 Then
+        TracePrint "地牢"
+        MTouch 433, 945
+        Delay 1000
+        //↓1资源地牢（坐标不变491, 391）
+        MTouch 491, 391
+        Delay 1000
+        //↓古代训练场（已改坐标485,862）
+        MTouch 485, 862
+        Delay 1000
+        //↓挑战进入--冒险424,267-挑战515,867-三国509,328-幽深山谷443,532（已改）
+    ElseIf ZZZ = F_副本 Then
+        TracePrint "挑战"
+        MTouch 424, 267
+        Delay 1000
+        MTouch 515, 867
+        Delay 1000
+        MTouch 509, 328
+        Delay 1000
+        //↓点击-幽深山谷关卡3
+        MTouch 443, 532
+        Delay 1000
+        //准备
+        MTouch 164, 1647
+        Delay 1000
+    Else
+        TracePrint "钓鱼"
+        ' ↓城镇钓鱼（坐标准确）
+        MTouch 132, 1482
+        Delay 2500
+    End If
+End Function
+' 升段位了（青铜白银）
+Function isBattleUpgradeScene()
+    If CmpColorEx("334|816|EFCF42,332|1108|EFCF42,824|726|213039,825|1210|213039",0.9) = 1 Then
+        isBattleUpgradeScene = TRUE
+        TracePrint "isBattleUpgradeScene"
+    Else
+        isBattleUpgradeScene = FALSE
+    End If
+End Function
+Function onBattleUpgradeScene()
+    MTouch 243,825
+    Delay 500
+End Function
+' 【24】没票了（进入竞技灰166,1285+进入竞技灰2--156,1574+排名上屎绿+上框深棕）
+Function isBattleNoTicketScene()
+    If CmpColorEx("166|1285|8C969C,156|1574|8C969C,518|393|213031,913|995|213039",0.9) = 1 Then
+        isBattleNoTicketScene = TRUE
+        TracePrint "isBattleNoTicketScene"
+    Else
+        isBattleNoTicketScene = FALSE
+    End If
+End Function
+Function onBattleNoTicketScene()
+    在竞技场 = False
+    ZZZ = 默认切换到
+    ' 点关闭（坐标正确）
+    MTouch 941, 1606
+    Delay 500
+End Function
+' 【25】跑小人检测√
+Function isRaceCheckScene()
+    If CmpColorEx("146|326|52DFAD,167|578|52DFAD,160|809|52DFAD,170|1060|52DFAD,144|1392|EFCF42",0.9) = 1 Then
+        isRaceCheckScene = TRUE
+        TracePrint "isRaceCheckScene"
+    Else
+        isRaceCheckScene = FALSE
+    End If
+End Function
+Function onRaceCheckScene()
+    ' 回看
+    ' MTouch 154, 1409
+    Delay 5000
+    ' width 243
+    MTouch 165, 415 + raceIndex * 243
+    Delay 1000
+    MTouch 165, 415 + raceIndex * 243
+    Delay 1000
+    raceIndex = raceIndex + 1
+    raceIndex = raceIndex Mod 4
+End Function
+' 【26】跑小人错误√
+Function isRaceErrorScene()
+    If CmpColorEx("221|815|E7CB4A,292|813|E7CB4A,220|1103|E7CB4A,293|1103|E7CB4A,802|851|42B6D6,596|983|DEEBEF",0.9) = 1 Then
+        isRaceErrorScene = TRUE
+        TracePrint "isRaceErrorScene"
+    Else
+        isRaceErrorScene = FALSE
+    End If
+End Function
+Function onRaceErrorScene()
+    ' 等待时间到了自动关闭
+    Delay 3000
+    ' MTouch 262, 819
+End Function
+' 【27】关卡完成
+Function isStageFinishScene()
+    If CmpColorEx("140|412|52DFAD,212|724|EFCF42,219|1490|52DFAD,818|525|314552",0.9) = 1 Then
+        isStageFinishScene = TRUE
+        TracePrint "isStageFinishScene"
+    Else
+        isStageFinishScene = FALSE
+    End If
+End Function
+Function onStageFinishScene()
+    ' 再来一次
+    MTouch 196, 792
+    ' 返回城镇
+    ' MTouch 162,1460
+    Delay 2000
+End Function
+' 【35】灵-讨-红关卡选择
+Function isWBStageScene()
+    If CmpColorEx("897|103|E7E3E7,170|1349|E7CB4A,151|1646|E7CB4A,1020|1835|428EBD,940|1421|101410",0.9) = 1 Then
+        isWBStageScene = TRUE
+        TracePrint "isWBStageScene"
+    Else
+        isWBStageScene = FALSE
+    End If
+End Function
+Function onWBStageScene()
+    ' 灵1
+    MTouch 873, 170
+    Delay 1200
+    MTouch 729, 151
+    Delay 500
+    ' 准备战斗
+    MTouch 168, 1489
+    Delay 500
+End Function
+' 【36】讨伐开始
+Function isWBStartScene()
+    If CmpColorEx("987|200|213039,50|240|EFEFEF,110|1475|EFCF42,106|1672|EFCF42,976|1296|213039",0.9) = 1 Then
+        isWBStartScene = TRUE
+        TracePrint "isWBStartScene"
+    Else
+        isWBStartScene = FALSE
+    End If
+End Function
+Function onWBStartScene()
+    ' 开始
+    MTouch 110, 1475
+    Delay 1000
+End Function
+' 【29】灵地下重返场景
+Function isDilaoScene()
+    If CmpColorEx("978|871|9CC7D6,981|907|9CC3D6,981|962|94BAC6,994|1035|9CC7D6,108|1160|8C969C,163|756|E7CB4A",1) = 1 Then
+        TracePrint "灵魂结束返回城镇"//索塔尔+下区灰则返回城镇
+        Delay 500
+        MTouch 135, 1508
+        Delay 1000
+        ZZZ = F_红莲
+    ElseIf CmpColorEx("993|908|9CC7D6,974|908|9CC7D6,983|994|9CC7D6,974|1035|9CC7D6",0.95) = 1 Then
+        TracePrint "红莲结束返回城镇"
+        Delay 500
+        MTouch 135, 1508
+        Delay 1000
+        ZZZ = F_好友一局
+    ElseIf CmpColorEx("1020|113|52B6FF,113|436|52DBA5,108|1160|8C969C,161|1367|52DBA5",0.95) = 1 Then
+        isDilaoScene = TRUE
+        TracePrint "重新挑战"//下区灰则重新挑战（左上黄+关卡绿+下区灰+返回绿---则点击---重新挑战133,842）
+        Delay 500
+        MTouch 133, 842
+        Delay 1000
+    Else
+        isDilaoScene= FALSE
+    End If
+End Function
+Function onDilaoScene()
+End Function
+' 【45】地牢钥匙不足（购买钥匙界面）买黄色+匙黄+取红+确蓝--点击取消100,786--点击返回城镇134,1516
+Function isDilaoKeyScene()
+    If CmpColorEx("950|939|42B6D6,942|1034|42B6D6,97|873|4A7DFF,90|1243|E7CB4A",0.95) = 1 Then
+        isDilaoKeyScene = TRUE
+        TracePrint "地牢钥匙不足"
+    Else
+        isDilaoKeyScene= FALSE
+    End If
+End Function
+Function onDilaoKeyScene()
+    ' 取消
+    MTouch 100, 786
+    Delay 500
+    ' 返回城镇
+    MTouch 134, 1516
+    ' X
+    Delay 50
+    MTouch 1018, 1830
+    Delay 1000
+End Function
+' 【46】斗技
+Function isDoujiTestScene()
+    If CmpColorEx("100|159|213863,145|448|3938CE,127|1158|2928FF,148|1371|FFFFFF",0.95) = 1 Then
+        isDoujiTestScene = TRUE
+        TracePrint "斗技场"
+    Else
+        isDoujiTestScene= FALSE
+    End If
+End Function
+Function onDoujiTestScene()
+    在竞技场 = True
+    MTouch 154, 1701
+    Delay 1000
+End Function
+' 【47】斗结
+Function isDoujiTestEndScene()
+    If CmpColorEx("197|81|52DBA5,137|111|FFFFFF,196|1469|52B6FF,192|1839|E7CB4A",0.95) = 1 Then
+        isDoujiTestEndScene = TRUE
+        TracePrint "斗技场结束"
+    Else
+        isDoujiTestEndScene= FALSE
+    End If
+End Function
+Function onDoujiTestEndScene()
+    MTouch 143,1700
+    Delay 1000
+End Function
+//斗寻
+Function isdoujixunzhaoscene()
+    If CmpColorEx("157|91|C6F3FF,127|124|423063,165|1579|DEFFFF,177|1792|BDDF94",0.95) = 1 and  CmpColorEx("496|889|4A7DFF,501|1054|4A7DFF",1) <> 1 Then
+        isdoujixunzhaoscene = TRUE
+        TracePrint "点击寻找对手"
+        MTouch 164, 1801
+        Delay 500
+    ElseIf CmpColorEx("157|91|C6F3FF,127|124|423063,165|1579|DEFFFF,177|1792|BDDF94,506|893|4A7DFF,505|1043|4A7DFF",0.95) = 1 and unknowKill>=100 Then
+        MTouch 507, 974//取消
+        Delay 1000
+        isdoujixunzhaoscene = FALSE
+    End If
+End Function
+Function ondoujixunzhaoscene()
+End Function
+//斗继
+Function isdoujijixuscene()
+    If CmpColorEx("188|180|E7CB4A,198|342|52DBA5,202|1297|E7CB4A,183|1603|52DBA5",0.95) = 1 Then
+        isdoujijixuscene = TRUE
+        MTouch 166,1259
+        Delay 1000
+    Else
+        isdoujijixuscene= FALSE
+    End If
+End Function
+Function ondoujijixuscene()
+End Function
+//斗选
+Function isdoujixuanrenscene()
+    If CmpColorEx("110|93|B5D7FF,637|219|9CC7D6,71|1180|52DBA5,18|1803|000000",0.95) = 1 Then
+        isdoujixuanrenscene = TRUE
+    Else
+        isdoujixuanrenscene= FALSE
+    End If
+End Function
+Function ondoujixuanrenscene()
+//斗技改1        2        3        4        5        6         7         8         9
+//478,300  478,462  478,624  478,786  478,948  478,1110  478,1272  478,1434  478,1596   
+//276,300  276,462  276,624  276,786  276,948  276,1110  276,1272  276,1434  276,1596
+    MTouch 478,948
+    Delay 800
+    MTouch 478,1110
+    Delay 800
+    MTouch 478,1272
+    Delay 800
+    MTouch 478,1434
+    Delay 800
+    MTouch 276,1272
+    Delay 800
+    MTouch 276,1434
+
+    Delay 800
+    MTouch 85, 1767
+End Function
+//斗技场升级
+Function isdoujishengjiscene()
+    If CmpColorEx("840|900|42B6D6,837|1010|42B6D6,222|854|E7CB4A,227|1062|E7CB4A",0.95) = 1 Then
+        isdoujishengjiscene= TRUE
+    Else
+        isdoujishengjiscene= FALSE
+    End If
+End Function
+Function ondoujishengjiscene()
+    MTouch 232,968
+    Delay 1000
+End Function
+
+' 【31】讨伐查找队伍--需要修改
+Function isWBFindTeamScene()
+    If CmpColorEx("588|1150|EFCF42,585|1422|EFCF42,436|1157|DE8A9C,182|1006|8C8A8C",0.9) = 1 Then
+        isWBFindTeamScene = TRUE
+        TracePrint "isWBFindTeamScene"
+    Else
+        isWBFindTeamScene = FALSE
+    End If
+End Function
+Function onWBFindTeamScene()
+    ' 随机寻找队友
+    MTouch 574, 1251
+    Delay 2000
+End Function
+' 【32】讨伐找到了队友
+Function isWBTeamUpScene()
+    If CmpColorEx("182|763|EFCF42,187|1150|EFCF42,805|584|213039,848|646|293C4A,831|1613|ADAAAD",0.9) = 1 Then
+        isWBTeamUpScene = TRUE
+        TracePrint "isWBTeamUpScene"
+    Else
+        isWBTeamUpScene = FALSE
+    End If
+End Function
+Function onWBTeamUpScene()
+    在讨伐 = True
+    ' 点击准备战斗
+    MTouch 168, 916
+    Delay 3000
+    ' 如果队友不准备，则退出
+    MTouch 831, 1615
+    Delay 500
+End Function
+' 【33】讨伐结束和队友都在
+Function isWBEndWithTeamScene()
+    If CmpColorEx("196|317|EFCF42,191|627|DE8A9C,121|901|EFCF42,202|1300|EFCF42,201|1372|DE8A9C",0.9) = 1 Then
+        isWBEndWithTeamScene = TRUE
+        TracePrint "isWBEndWithTeamScene"
+    Else
+        isWBEndWithTeamScene = FALSE
+    End If
+End Function
+Function onWBEndWithTeamScene()
+    ' 详细信息
+    MTouch 168, 428
+    Delay 600
+    ' 重新挑战
+    MTouch 186, 1078
+    Delay 1800
+    ' 入口
+    MTouch 171, 725
+    Delay 2000
+End Function
+' 【34】讨伐结束队友消失
+Function isWBEndNoTeamScene()
+    If CmpColorEx("184|314|EFCF42,191|627|DE8A9C,123|902|8C8A8C,203|1299|8C8A8C,201|1372|DE8A9C",0.9) = 1 Then
+        isWBEndNoTeamScene = TRUE
+        TracePrint "isWBEndNoTeamScene"
+    Else
+        isWBEndNoTeamScene = FALSE
+    End If
+End Function
+Function onWBEndNoTeamScene()
+    在讨伐 = False
+    ' 入口
+    MTouch 175, 695
+    Delay 2000
+End Function
+' 【40】讨伐结算等待
+Function isWBSettleScene()
+    If CmpColorEx("201|324|EFCF42,149|607|8C8A8C,123|899|8C8A8C,203|1301|8C8A8C,208|1381|8C8A8C",0.9) = 1 Then
+        isWBSettleScene = TRUE
+        TracePrint "isWBSettleScene"
+    Else
+        isWBSettleScene = FALSE
+    End If
+End Function
+Function onWBSettleScene()
+    在讨伐 = False
+    touchUnknow
+    Delay 200
+End Function
+' 【39】物品已满
+Function isItemFullScene()
+    If CmpColorEx("228|654|4A7DFF,302|640|4A7DFF,225|1277|E7CB4A,290|1273|E7CB4A",0.9) = 1 Then
+        isItemFullScene = TRUE
+        TracePrint "isItemFullScene"
+    Else
+        isItemFullScene = FALSE
+    End If
+End Function
+Function onItemFullScene()
+    在竞技场 = False
+    在讨伐 = False
+    MTouch 252, 728
+    Delay 1000
+End Function
+' 【41】卖武器//待改
+Function isWeaponSellScene()
+    If CmpColorEx("149|1419|52DBA5,150|1581|52DBA5,152|1638|E7CB4A,150|1823|E7CB4A,884|1054|DEEFF7",0.9) = 1 Then
+        isWeaponSellScene = TRUE
+        TracePrint "isWeaponSellScene"
+    Else
+        isWeaponSellScene = FALSE
+    End If
+End Function
+Function onWeaponSellScene()
+
+    Delay 1500
+    ' 关闭退出
+    MTouch 1014,1852
+    Delay 500
+End Function
+' 【42】英雄首次升到满级√
+Function isHeroFirstMaxScene()
+    If CmpColorEx("735|652|63CFFF,927|1284|293C4A,888|1274|213039,719|1290|52CFFF,823|1264|DEEFFF",0.9) = 1 Then
+        isHeroFirstMaxScene= TRUE
+    Else
+        isHeroFirstMaxScene= FALSE
+    End If
+End Function
+Function onHeroFirstMaxScene()
+    MTouch 222, 950
+    Delay 500
+End Function
+' 【43】勇士团升级√
+Function isPlayerLevelUpScene()
+    If CmpColorEx("885|657|213039,875|1210|213039,939|1240|293C4A,234|647|DEEFFF,750|695|BDEFFF",0.9) = 1 Then
+        isPlayerLevelUpScene= TRUE
+    Else
+        isPlayerLevelUpScene= FALSE
+    End If
+End Function
+Function onPlayerLevelUpScene()
+    MTouch 250, 939
+    Delay 500
+End Function
+' 【57】POPO场景--如果发现POPO则返回城镇购买东西
+Function isPoPoScene()
+    If CmpColorEx("735|892|314552,612|843|314552,673|1066|314552,421|957|213031,883|953|318294",0.9) = 1 Then
+        isPoPoScene = TRUE
+    Else
+        isPoPoScene= FALSE
+    End If
+End Function
+Function onPoPoScene()
+    MTouch 170, 957
+    Delay 500
+End Function
+' 【30】灵魂+地牢通关场景（左上黄+关卡绿+下区蓝+返回绿则下-否则跳过onSoul--重新挑战）
+Function isSoulPassScene()
+    If CmpColorEx("1020|113|52B6FF,113|436|52DBA5,103|1153|E7CB4A,161|1367|52DBA5", 0.9) = 1 Then  
+        isSoulPassScene = TRUE
+        TracePrint "下一个区域"
+    Else
+        isSoulPassScene = FALSE
+    End If
+End Function
+Function onSoulPassScene()
+    ' 下一关
+    MTouch 134, 1170
+    Delay 1000
+
+End Function
+
+//陪练场场景
+Function isHaoyouScene()
+    If CmpColorEx("928|1147|293C4A,893|1151|213039,725|1150|52B6FF,568|1149|4A7DFF,413|1159|E7CB4A,393|1421|E7CB4A", 0.95) = 1 Then  
+        Delay 1000
+        MTouch 728, 1300
+        TracePrint "好友陪练"
+    ElseIf CmpColorEx("937|334|293C4A,196|357|DEEFF7,213|1289|DEEFF7,446|1223|4A7DFF", 0.95) = 1 Then
+        TracePrint "正在寻找"
+        ' 点击取消
+        Delay 8000
+        MTouch 435,1301
+    End If
+End Function
+Function onHaoyouScene()
+End Function
+//陪练结束
+Function isHaoyoujieshuScene()
+    If CmpColorEx("981|314|293C4A,933|328|213039,148|309|DEEFF7,136|465|52DBA5,226|462|52DBA5,178|498|52DBA5", 1) = 1 and ZZZ <> F_好友二局 Then  
+        TracePrint "1"
+        Delay 100
+        TouchDown 176, 597, 1
+        Delay 100
+    ElseIf CmpColorEx("981|314|293C4A,933|328|213039,148|309|DEEFF7,136|465|39A273,226|462|39A273,178|498|39A273", 1) = 1 Then
+        TouchUp 1
+        TracePrint "2"
+        ZZZ = F_好友二局
+        Delay 3000
+    ElseIf CmpColorEx("981|314|293C4A,933|328|213039,148|309|DEEFF7,136|465|52DBA5,226|462|52DBA5,178|498|52DBA5", 1) = 1 and ZZZ = F_好友二局 Then  
+        TracePrint "1"
+        Delay 100
+        Touch 177, 1340, 500
+    ZZZ=F_鱼
+    End If
+End Function
+Function onHaoyoujieshuScene()
+End Function
+//挑战委任结束
+ Function isTiaozhanScene()
+    If CmpColorEx( "946|1064|42B6D6,922|1109|42B6D6,106|843|E7CB4A,105|1089|E7CB4A", 0.95) = 1 Then  
+        TracePrint "委任结束"
+        Delay 500
+        MTouch 115, 957
+        Delay 500
+        MTouch 131, 1595
+        Delay 500
+    ZZZ=F_竞技场
+    End If
+End Function
+
+' 其他场景
+Function isQitaScene()
+    If CmpColorEx("656|657|394952,358|646|213039,667|931|394952,369|903|213039,672|1205|394952,419|1162|213039,190|852|E7CB4A,170|1061|E7CB4A", 0.9) = 1 Then  
+        TracePrint "竞技场门票错误点界面"
+        MTouch 185, 960
+        Delay 1000
+    Elseif CmpColorEx("827|863|5A75FF,573|961|B5BEFF,295|573|4A7DFF,295|1336|E7CB4A,823|1104|5A75FF", 0.9) = 1 Then  
+        TracePrint "红莲的信物"
+        MTouch 244, 717
+        Delay 1000
+        MTouch 1027,1834
+        Delay 1000
+        MTouch 1027,1834
+        Delay 1000
+        MTouch 1027,1834
+        Delay 1000
+    Elseif CmpColorEx("846|843|A5DF29,853|1020|A5DF29,169|580|4A7DFF,167|1332|E7CB4A", 0.9) = 1 Then  
+        TracePrint "鸭肝的圣水"
+        MTouch 211,733
+        Delay 1000
+        MTouch 129,1513
+    ElseIf CmpColorEx("249|844|E7CB4A,254|1072|E7CB4A,800|851|42B6D6,797|968|42B6D6", 0.95) = 1  Then
+        TracePrint "无法进入界面"
+        MTouch 259, 967
+        Delay 2000
+    ElseIf CmpColorEx("224|166|212121,865|161|212121,1079|1918|130C08,0|1917|0A0501,171|377|2B2B2B", 0.95) = 1  Then
+        TracePrint "雷电主页"
+        Delay 3000
+        RunApp PACKAGE_NAME
+        Delay 5000
+    ElseIf CmpColorEx("938|271|DEEBEF,946|237|293C4A,890|237|213039,928|1636|428EBD", 0.9) = 1  Then
+        TracePrint "女神之家"
+        Delay 500
+        MTouch 926,1640
+        Delay 1000
+    ElseIf CmpColorEx("945|242|293C4A,905|237|213039,58|250|DEEFF7,704|1076|394952,929|1638|428EBD", 0.9) = 1 Then
+        TracePrint "邀请好友"
+        Delay 500
+        MTouch 926,1638
+        Delay 500
+    ElseIf CmpColorEx("931|439|213039,984|443|293C4A,926|1346|213039,970|1376|293C4A,952|1447|428EBD", 0.9) = 1 Then
+        TracePrint "注册场景"
+        MTouch 952, 1447
+        Delay 500
+    ElseIf CmpColorEx("525|1028|EFEBEF,539|1028|EFEBEF,247|855|E7CB4A,265|1040|E7CB4A,806|359|425963,1214|358|425963", 0.9) = 1 Then
+        TracePrint "5101错误"
+        Delay 500
+        MTouch 261,960
+        Delay 500
+    ElseIf CmpColorEx("305|805|E7CB4A,209|806|E7CB4A,306|1111|E7CB4A,205|1114|E7CB4A", 0.95) = 1 Then
+        TracePrint "4201错误"
+        Delay 3000
+        MTouch 259,967
+        Delay 500
+    ElseIf CmpColorEx("595|893|FFFFFF,595|913|FFFBFF,723|898|425963,256|877|E7CB4A,263|1071|E7CB4A", 0.9) = 1 Then
+        TracePrint "网络错误101"
+        Delay 500
+        MTouch 260,958
+        Delay 500
+    ElseIf CmpColorEx("723|730|425963,595|893|FFFFFF,209|808|E7CB4A,207|1112|E7CB4A,849|962|39454A", 0.9) = 1 Then
+        TracePrint "网络错误110"
+        Delay 500
+        MTouch 260,958
+        Delay 500
+    ElseIf CmpColorEx("817|872|42B6D6,799|1057|42B6D6,227|792|4A7DFF,223|1220|E7CB4A", 0.9) = 1 Then
+        TracePrint "下载数据"
+        Delay 500
+        MTouch 257, 1134
+        Delay 500
+    ElseIf CmpColorEx("83|821|DEF3FF,49|951|DEEBEF,49|1005|DEEBEF,56|839|212429,50|1052|212429", 0.9) = 1 Then
+        TracePrint "下载完毕"
+        Delay 500
+        MTouch 57, 950
+        Delay 500
+    ElseIf CmpColorEx("1001|85|DEEBEF,1034|157|DEEBEF,977|1787|213039,608|1855|9CC7D6", 0.9) = 1 Then
+        TracePrint "公告"
+        Delay 1500
+        MTouch 1014, 1721
+        Delay 2000
+        MTouch 1012, 1852
+        Delay 2000
+    ElseIf CmpColorEx("1005|156|00007B,1011|1706|00007B,104|82|002884,1002|1793|0092C6", 0.9) = 1 Then
+        TracePrint "特别出售"
+        Delay 1500
+        MTouch 1003,1674
+        Delay 2000
+        MTouch 1003,1792
+        Delay 2000
+    ElseIf CmpColorEx("1029|39|84D7F7,62|39|84D7F7,980|1822|428EBD,48|1876|525184", 0.9) = 1 Then
+        TracePrint "回归奖励"
+        MTouch 980, 1822
+        Delay 2000
+    ElseIf CmpColorEx("813|818|42B6D6,804|1054|42B6D6,252|855|E7CB4A,241|1055|E7CB4A", 0.9) = 1 Then
+        TracePrint "非正常使用"
+        Delay 500
+        MTouch 258, 968
+        Delay 1500
+    ElseIf CmpColorEx("1016|322|DEEBEF,983|320|DEEBEF,1019|218|293C4A,970|206|213039,1006|1663|428EBD", 0.9) = 1 Then
+        TracePrint "领主"
+        Delay 500
+        MTouch 1002,1660
+        Delay 1000
+    ElseIf CmpColorEx("147|794|212429,166|876|212429,164|1124|212429,53|578|000000", 1) = 1 Then
+        TracePrint "等级提升"
+        Delay 500
+        MTouch 173, 955
+        Delay 800
+    ElseIf CmpColorEx("865|690|293C4A,821|706|213039,851|1192|428EBD,685|760|213031,726|705|DEEFFF", 0.9) = 1 Then
+        TracePrint "？1"
+        Delay 500
+        MTouch 851, 1192
+        Delay 800
+    End If
+End Function
+Function onQitaScene()
+End Function
+
+
+' -------------------------------Buttons-----------------
+' 点击开始钓鱼--在onWaitScene和onCatchingNotice（出现鱼）里
+Function touchFishing()  //坐标正确
+    MTouch(206+suiji, 1748+suiji)
+End Function
+' 钓鱼加力--在onWeakStrength和onPullScene0和onPullScene0里
+Function pressFishing(stime)
+    Touch 206+suiji, 1748+suiji, stime
+End Function
+' 未知界面显示等待300mm一次--
+Function onUnknowScene()
+    TracePrint "等待"&unknowKill
+    ' touchUnknow
+    Delay 300
+End Function
+' 按方块1~8
+Function touchColorQTE(idx)//已改，两个加号可能出问题
+    ' width 196
+    Dim fixWidth = 196
+    MTouch 45+suiji, 386+suiji+(idx-1)*fixWidth
+End Function
+
+Function colorQTE(idx1,idx2,idx3)//无需修改
+    touchColorQTE(idx1)
+    Delay 100
+    touchColorQTE(idx2)
+    Delay 200
+    touchColorQTE (idx3)
+    Delay 300
+    TracePrint "colorQTE:"&idx1&idx2&idx3
+End Function
+
+' -------------------------CommonButton----------------
+'主体每次循环都改一次随机±
+Function MTouch(x, y)
+    Dim suiji
+    Randomize  
+    suiji = Int(((10 - -10 + 1) * Rnd()) + -10)
+    //TracePrint suiji
+    Touch x+suiji, y+suiji, 30
+End Function
+
+Function touchUnknow()
+    MTouch 5, 1915
+End Function
+
+' 上滑
+Function swipeUp(x, y)
+    Swipe x, y, x + 300, y, 200
+End Function
+
+' 下滑
+Function swipeDown(x, y)
+    Swipe x, y, x - 300, y
+End Function
+
+' 左滑
+Function swipeLeft(x, y)
+    Swipe x, y, x, y - 300
+End Function
+
+' 右滑
+Function swipeRight(x, y)
+    Swipe x, y, x, y + 300
+End Function
